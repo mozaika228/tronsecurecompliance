@@ -1,0 +1,48 @@
+﻿services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tronsecure
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tronsecure"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      APP_ENV: dev
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/tronsecure
+      AML_PROVIDER: mock
+      AML_HTTP_BASE_URL: https://api.example-aml-provider.com/v1
+      AML_HTTP_API_KEY: ""
+      AML_HTTP_TIMEOUT_S: "20"
+      AML_HTTP_CHECK_PATH: /check
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:-}
+      BACKEND_BASE_URL: http://api:8000/api/v1
+    depends_on:
+      - api
+    profiles: ["bot"]
+
+volumes:
+  pg_data:

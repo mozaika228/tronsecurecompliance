@@ -1,0 +1,287 @@
+﻿openapi: 3.0.3
+info:
+  title: TronSecure Compliance API
+  version: 0.1.0
+servers:
+  - url: http://localhost:8000
+paths:
+  /api/v1/aml/check:
+    post:
+      tags: [AML]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AmlCheckRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AmlCheckResponse'
+  /api/v1/requests:
+    post:
+      tags: [Requests]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestResponse'
+    get:
+      tags: [Requests]
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [draft, pending, approved, rejected, paid]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RequestResponse'
+  /api/v1/requests/{request_id}:
+    get:
+      tags: [Requests]
+      parameters:
+        - in: path
+          name: request_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestResponse'
+  /api/v1/requests/{request_id}/submit:
+    post:
+      tags: [Requests]
+      parameters:
+        - in: path
+          name: request_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestResponse'
+  /api/v1/requests/{request_id}/approve:
+    post:
+      tags: [Requests]
+      parameters:
+        - in: path
+          name: request_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionPayload'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestResponse'
+  /api/v1/requests/{request_id}/reject:
+    post:
+      tags: [Requests]
+      parameters:
+        - in: path
+          name: request_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionPayload'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestResponse'
+  /api/v1/requests/{request_id}/mark-paid:
+    post:
+      tags: [Requests]
+      parameters:
+        - in: path
+          name: request_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkPaidPayload'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestResponse'
+  /api/v1/requests/{request_id}/history:
+    get:
+      tags: [Requests]
+      parameters:
+        - in: path
+          name: request_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StatusHistoryItem'
+  /api/v1/admin/users/{user_id}/role:
+    post:
+      tags: [Admin]
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleUpdatePayload'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+components:
+  schemas:
+    RiskCategory:
+      type: object
+      properties:
+        name: { type: string }
+        score: { type: number }
+      required: [name, score]
+    AmlCheckRequest:
+      type: object
+      properties:
+        address: { type: string }
+        network: { type: string, enum: [TRON] }
+      required: [address, network]
+    AmlCheckResponse:
+      type: object
+      properties:
+        check_id: { type: string, format: uuid }
+        risk_score: { type: number }
+        risk_level: { type: string, enum: [low, medium, high] }
+        categories:
+          type: array
+          items: { $ref: '#/components/schemas/RiskCategory' }
+        checked_at: { type: string, format: date-time }
+      required: [check_id, risk_score, risk_level, categories, checked_at]
+    RequestCreate:
+      type: object
+      properties:
+        address: { type: string }
+        network: { type: string, enum: [TRON] }
+        asset: { type: string, enum: [USDT] }
+        amount: { type: string }
+        comment: { type: string, nullable: true }
+        attachment_url: { type: string, nullable: true }
+        aml_check_id: { type: string, format: uuid }
+      required: [address, network, asset, amount, aml_check_id]
+    RequestResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        request_no: { type: string }
+        creator_id: { type: integer }
+        address: { type: string }
+        network: { type: string }
+        asset: { type: string }
+        amount: { type: string }
+        comment: { type: string, nullable: true }
+        attachment_url: { type: string, nullable: true }
+        aml_check_id: { type: string, format: uuid }
+        status: { type: string, enum: [draft, pending, approved, rejected, paid] }
+        tx_hash: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [id, request_no, creator_id, address, network, asset, amount, aml_check_id, status, created_at, updated_at]
+    DecisionPayload:
+      type: object
+      properties:
+        reason: { type: string, nullable: true }
+    MarkPaidPayload:
+      type: object
+      properties:
+        tx_hash: { type: string }
+      required: [tx_hash]
+    StatusHistoryItem:
+      type: object
+      properties:
+        id: { type: integer }
+        request_id: { type: string, format: uuid }
+        old_status: { type: string, nullable: true }
+        new_status: { type: string }
+        actor_id: { type: integer, nullable: true }
+        reason: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+      required: [id, request_id, new_status, created_at]
+    RoleUpdatePayload:
+      type: object
+      properties:
+        role: { type: string, enum: [manager, head, analyst, admin] }
+      required: [role]
+    UserResponse:
+      type: object
+      properties:
+        id: { type: integer }
+        telegram_id: { type: integer }
+        full_name: { type: string }
+        role: { type: string }
+      required: [id, telegram_id, full_name, role]
