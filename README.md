@@ -30,11 +30,38 @@ alembic upgrade head
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-5. Start Telegram bot:
+5. Create users in DB (required for Telegram auth).
+6. Start Telegram bot:
 
 ```powershell
 python bot/bot.py
 ```
+
+## Telegram Auth Model
+
+Backend now resolves user and role by `telegram_id` from `users` table via header `X-Telegram-Id`.
+
+- Bot sends only `X-Telegram-Id`.
+- Backend loads user from DB and enforces RBAC by stored `role`.
+- If user is missing/inactive, request is rejected.
+
+### Bootstrap first admin user
+
+Use one legacy call with manual actor headers, then switch to Telegram-based flow:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/admin/users \
+  -H "Content-Type: application/json" \
+  -H "X-Actor-Id: 1" \
+  -H "X-Actor-Role: admin" \
+  -d '{
+    "telegram_id": 123456789,
+    "full_name": "Main Admin",
+    "role": "admin"
+  }'
+```
+
+After this, use `X-Telegram-Id: 123456789` for admin calls.
 
 ## Docker Compose
 
@@ -50,13 +77,7 @@ Run bot (optional, requires `BOT_TOKEN`):
 docker compose --profile bot up --build
 ```
 
-## Test Coverage
-
-The repository now includes:
-- Unit tests for status transitions and role access checks.
-- Unit tests for AML provider behavior.
-- API integration-style tests using FastAPI `TestClient` with an async fake DB.
-- Bot handler tests for command validation and backend response handling.
+## Tests
 
 Run tests:
 
@@ -64,12 +85,18 @@ Run tests:
 pytest -q
 ```
 
+Coverage includes:
+- status transition and RBAC checks
+- AML provider behavior
+- API handler tests (async with fake DB)
+- bot command handler tests
+
 ## API curl Examples
 
-Use headers to simulate actor identity/role:
+Preferred header:
 
 ```bash
--H "X-Actor-Id: 101" -H "X-Actor-Role: manager"
+-H "X-Telegram-Id: 123456789"
 ```
 
 AML check:
@@ -77,8 +104,7 @@ AML check:
 ```bash
 curl -X POST http://localhost:8000/api/v1/aml/check \
   -H "Content-Type: application/json" \
-  -H "X-Actor-Id: 101" \
-  -H "X-Actor-Role: manager" \
+  -H "X-Telegram-Id: 123456789" \
   -d '{
     "address": "TVjsExampleAddress001",
     "network": "TRON"
@@ -90,8 +116,7 @@ Create payment request:
 ```bash
 curl -X POST http://localhost:8000/api/v1/requests \
   -H "Content-Type: application/json" \
-  -H "X-Actor-Id: 101" \
-  -H "X-Actor-Role: manager" \
+  -H "X-Telegram-Id: 123456789" \
   -d '{
     "address": "TVjsExampleAddress001",
     "network": "TRON",
@@ -106,8 +131,7 @@ Submit request:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/requests/<REQUEST_ID>/submit \
-  -H "X-Actor-Id: 101" \
-  -H "X-Actor-Role: manager"
+  -H "X-Telegram-Id: 123456789"
 ```
 
 Approve request (head role):
@@ -115,8 +139,7 @@ Approve request (head role):
 ```bash
 curl -X POST http://localhost:8000/api/v1/requests/<REQUEST_ID>/approve \
   -H "Content-Type: application/json" \
-  -H "X-Actor-Id: 500" \
-  -H "X-Actor-Role: head" \
+  -H "X-Telegram-Id: 987654321" \
   -d '{"reason":"Approved after AML review"}'
 ```
 
@@ -125,65 +148,18 @@ Mark as paid:
 ```bash
 curl -X POST http://localhost:8000/api/v1/requests/<REQUEST_ID>/mark-paid \
   -H "Content-Type: application/json" \
-  -H "X-Actor-Id: 500" \
-  -H "X-Actor-Role: head" \
+  -H "X-Telegram-Id: 987654321" \
   -d '{"tx_hash":"TRON_TX_HASH_HERE"}'
 ```
 
-## AML Business Logic (Current MVP)
-
-1. A manager or analyst submits wallet address + network to `/aml/check`.
-2. The API uses configured provider (`AML_PROVIDER=mock|http`).
-3. Provider returns `risk_score`, `risk_level`, and risk categories.
-4. AML result is saved in `wallet_checks` and linked to payment request by `aml_check_id`.
-5. Request lifecycle enforces status transitions:
-   - `draft -> pending -> approved -> paid`
-   - `pending -> rejected`
-6. Role restrictions are enforced by header-based RBAC:
-   - manager/admin: create + submit
-   - head/admin: approve + mark-paid
-   - analyst: read + AML checks
-7. Every status change writes to `status_history` and `audit_logs`.
-
 ## CI/CD
 
-### CI (GitHub Actions)
-
-Workflow file: `.github/workflows/ci.yml`
-
-- Trigger: push (all branches), pull request to `main`
-- Jobs:
-  - `test`: install deps, compile check, run unit/integration tests
-  - `build-images`: build API and bot Docker images (no push)
-
-### CD (GitHub Actions)
-
-Workflow file: `.github/workflows/cd.yml`
-
-- Trigger: push to `main`, manual dispatch
-- Action: build and publish Docker images to GHCR:
-  - `ghcr.io/<owner>/tronsecurecompliance-api`
-  - `ghcr.io/<owner>/tronsecurecompliance-bot`
-
-Required repository setting:
-- Actions permissions should be set to `Read and write permissions`.
-
-## Roadmap
-
-1. Replace header-based RBAC with secure auth (JWT/session + Telegram identity mapping).
-2. Add real AML provider adapters (Chainalysis/Crystal/AMLBot) with retries, circuit breaker, and provider fallback.
-3. Add DB-backed integration tests in CI with ephemeral Postgres service.
-4. Add policy engine for auto-reject / override flow on high-risk wallets.
-5. Add notification and escalation channels (Telegram + email/webhooks).
-6. Add immutable audit export and compliance reporting package.
-7. Add deployment manifests (Kubernetes/Helm/Terraform) and environment promotion gates.
+- CI: `.github/workflows/ci.yml` (compile, tests, docker build)
+- CD: `.github/workflows/cd.yml` (publish images to GHCR on `main`)
 
 ## Key Files
 
-- `sql/schema.sql` - SQL DDL
-- `alembic/versions/0001_initial.py` - initial migration
-- `specs/openapi.yaml` - OpenAPI 3.0
-- `app/` - FastAPI backend
-- `bot/bot.py` - Telegram bot
-- `.github/workflows/ci.yml` - CI pipeline
-- `.github/workflows/cd.yml` - CD pipeline
+- `app/api/deps.py` - Telegram-based actor resolution and RBAC
+- `app/api/routes_admin.py` - user creation and role management
+- `bot/bot.py` - Telegram bot client
+- `specs/openapi.yaml` - API spec

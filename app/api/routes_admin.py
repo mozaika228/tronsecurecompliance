@@ -1,13 +1,36 @@
-﻿from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_actor_role, require_role
-from app.api.schemas import RoleUpdatePayload, UserResponse
+from app.api.schemas import RoleUpdatePayload, UserCreatePayload, UserResponse
 from app.db.models import User, UserRole
 from app.db.session import get_db
 
 router = APIRouter(tags=["Admin"])
+
+
+@router.post("/admin/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def create_user(
+    payload: UserCreatePayload,
+    db: AsyncSession = Depends(get_db),
+    actor_role: UserRole = Depends(get_actor_role),
+) -> UserResponse:
+    require_role({UserRole.admin}, actor_role)
+    existing = (await db.execute(select(User).where(User.telegram_id == payload.telegram_id))).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this telegram_id already exists")
+
+    user = User(
+        telegram_id=payload.telegram_id,
+        full_name=payload.full_name,
+        role=payload.role,
+        is_active=True,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return UserResponse.model_validate(user)
 
 
 @router.post("/admin/users/{user_id}/role", response_model=UserResponse)

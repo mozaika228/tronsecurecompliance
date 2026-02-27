@@ -38,8 +38,7 @@ def _update(user_id: int = 1):
 
 def test_build_headers() -> None:
     headers = build_headers(_update(42))
-    assert headers["X-Actor-Id"] == "42"
-    assert headers["X-Actor-Role"] == "manager"
+    assert headers["X-Telegram-Id"] == "42"
 
 
 def test_aml_check_usage() -> None:

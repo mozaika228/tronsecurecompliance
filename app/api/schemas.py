@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from datetime import datetime
 from decimal import Decimal
 
@@ -76,6 +76,12 @@ class StatusHistoryItem(BaseModel):
 
 class RoleUpdatePayload(BaseModel):
     role: UserRole
+
+
+class UserCreatePayload(BaseModel):
+    telegram_id: int
+    full_name: str
+    role: UserRole = UserRole.manager
 
 
 class UserResponse(BaseModel):

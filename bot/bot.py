@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import os
 
 import httpx
@@ -13,7 +13,8 @@ def build_headers(update: Update) -> dict[str, str]:
     user = update.effective_user
     if not user:
         return {}
-    return {"X-Actor-Id": str(user.id), "X-Actor-Role": "manager"}
+    # Production mode: backend resolves role by telegram_id from users table.
+    return {"X-Telegram-Id": str(user.id)}
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
